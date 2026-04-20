@@ -17,17 +17,21 @@ class AlertMessage:
     raw_text: str
     symbol: Optional[str] = None
     price: Optional[float] = None
-    timestamp: Optional[datetime] = None  # When received in Telegram
-    parsed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    received_at: Optional[str] = None  # UTC ISO8601
+    parsed_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
     def to_dict(self) -> dict:
-        """Serialize to dict for JSON logging."""
+        """Serialize to alerts.log JSON format.
+
+        Format: {"ts": "...", "symbol": "...", "price": ..., "raw": "..."}
+        """
         return {
-            "raw_text": self.raw_text,
+            "ts": self.received_at,
             "symbol": self.symbol,
             "price": self.price,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "parsed_at": self.parsed_at.isoformat(),
+            "raw": self.raw_text,
         }
 
 
@@ -73,11 +77,12 @@ class AlertParser:
         except (ValueError, TypeError):
             return None
 
+        now_utc = datetime.now(timezone.utc).isoformat()
         return AlertMessage(
             raw_text=text.strip(),
             symbol=symbol,
             price=price,
-            timestamp=datetime.now(timezone.utc),
+            received_at=now_utc,
         )
 
     def parse_or_raise(self, text: str) -> AlertMessage:

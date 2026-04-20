@@ -26,7 +26,6 @@ def interactive_setup() -> None:
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    # Prompt for API credentials
     print("Enter your Telegram API credentials from https://my.telegram.org:")
     api_id = input("  API ID: ").strip()
     api_hash = input("  API Hash: ").strip()
@@ -36,7 +35,6 @@ def interactive_setup() -> None:
         print("ERROR: All fields are required.")
         sys.exit(1)
 
-    # Update config
     config["telegram"]["api_id"] = api_id
     config["telegram"]["api_hash"] = api_hash
     config["telegram"]["phone"] = phone
@@ -46,14 +44,17 @@ def interactive_setup() -> None:
 
     print("\nConfig updated. Starting interactive Telegram login...")
 
-    # Run Telethon setup flow
     from telethon import TelegramClient
 
-    sessions_dir = Path(config.get("sessions_dir", "sessions"))
+    sessions_dir = Path("sessions")
     sessions_dir.mkdir(parents=True, exist_ok=True)
     session_name = config["telegram"].get("session_name", "listener_session")
 
-    client = TelegramClient(str(sessions_dir / f"{session_name}.session"), api_id, api_hash)
+    client = TelegramClient(
+        str(sessions_dir / f"{session_name}.session"),
+        int(api_id),
+        api_hash,
+    )
 
     print("\nA verification code will be sent to your Telegram app.")
     print("Enter it when prompted.\n")
@@ -67,7 +68,9 @@ def interactive_setup() -> None:
 
 def main() -> None:
     """Run the listener."""
-    parser = argparse.ArgumentParser(description="TradingView Signal Generator Listener")
+    parser = argparse.ArgumentParser(
+        description="TradingView Signal Generator Listener"
+    )
     parser.add_argument(
         "--setup",
         action="store_true",
@@ -85,15 +88,12 @@ def main() -> None:
         interactive_setup()
         return
 
-    # Normal run
-    from src.listener import run_listener
-
-    # Configure logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
+    from src.listener import run_listener
     run_listener(config_path=args.config)
 
 

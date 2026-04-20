@@ -91,13 +91,13 @@ class TestAlertParser:
         assert alert is not None
         assert alert.price == 7095.0
 
-    def test_parse_timestamp_set(self):
-        """Parsed alert should have timestamp set."""
+    def test_parse_received_at_set(self):
+        """Parsed alert should have received_at set."""
         text = "TradingView Alert for SPX, Price = 7095.15"
         alert = self.parser.parse(text)
 
         assert alert is not None
-        assert alert.timestamp is not None
+        assert alert.received_at is not None
         assert alert.parsed_at is not None
 
     def test_parse_or_raise_success(self):
@@ -118,30 +118,38 @@ class TestAlertMessage:
     """Tests for AlertMessage dataclass."""
 
     def test_to_dict(self):
-        """Serialize to dict correctly."""
+        """Serialize to alerts.log JSON format."""
         alert = AlertMessage(
             raw_text="TradingView Alert for SPX, Price = 7095.15",
             symbol="SPX",
             price=7095.15,
-            timestamp=datetime(2026, 4, 20, 15, 30, 0, tzinfo=timezone.utc),
+            received_at="2026-04-20T15:30:00+00:00",
+            parsed_at="2026-04-20T15:30:01+00:00",
         )
 
         d = alert.to_dict()
 
-        assert d["raw_text"] == "TradingView Alert for SPX, Price = 7095.15"
+        assert d["raw"] == "TradingView Alert for SPX, Price = 7095.15"
         assert d["symbol"] == "SPX"
         assert d["price"] == 7095.15
-        assert "2026-04-20T15:30:00" in d["timestamp"]
+        assert d["ts"] == "2026-04-20T15:30:00+00:00"
+        # No extra fields
+        assert "raw_text" not in d
+        assert "parsed_at" not in d
 
-    def test_to_dict_with_no_timestamp(self):
-        """Handle None timestamp in serialization."""
+    def test_to_dict_with_nulls(self):
+        """Handle None symbol/price in serialization."""
         alert = AlertMessage(
-            raw_text="test",
+            raw_text="unparseable message",
             symbol=None,
             price=None,
-            timestamp=None,
+            received_at=None,
+            parsed_at="2026-04-20T15:30:01+00:00",
         )
 
         d = alert.to_dict()
 
-        assert d["timestamp"] is None
+        assert d["raw"] == "unparseable message"
+        assert d["symbol"] is None
+        assert d["price"] is None
+        assert d["ts"] is None

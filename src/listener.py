@@ -20,7 +20,7 @@ class Listener:
         api_id: str,
         api_hash: str,
         phone: str,
-        channel_name: str,
+        channel_entity: str,
         session_name: str = "listener_session",
         sessions_dir: str = "sessions",
         log_file: str = "alerts.log",
@@ -31,7 +31,7 @@ class Listener:
             api_id: Telegram API ID.
             api_hash: Telegram API Hash.
             phone: Telegram phone number.
-            channel_name: Channel name to listen on.
+            channel_entity: Channel name, username, or numeric chat_id (e.g. "-1003946119741").
             session_name: Name for the session file.
             sessions_dir: Directory to store session files.
             log_file: Path to JSON log file for alerts.
@@ -39,7 +39,7 @@ class Listener:
         self.api_id = api_id
         self.api_hash = api_hash
         self.phone = phone
-        self.channel_name = channel_name
+        self.channel_entity = channel_entity
         self.session_name = session_name
         self.sessions_dir = Path(sessions_dir)
         self.log_file = Path(log_file)
@@ -86,10 +86,11 @@ class Listener:
         logger.info(f"Connected to Telegram as {self.phone}")
 
         try:
-            channel = await client.get_entity(self.channel_name)
-            logger.info(f"Listening on channel: {self.channel_name}")
+            # channel_entity can be a name, username, or numeric chat_id string
+            channel = await client.get_entity(self.channel_entity)
+            logger.info(f"Listening on channel: {self.channel_entity}")
         except Exception as e:
-            logger.error(f"Could not find channel '{self.channel_name}': {e}")
+            logger.error(f"Could not find channel '{self.channel_entity}': {e}")
             raise
 
         client.add_event_handler(self.handle_message)
@@ -104,18 +105,34 @@ def run_listener(config_path: str = "config/config.yaml") -> None:
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    listener_cfg = config.get("listener", {})
     telegram_cfg = config.get("telegram", {})
+    channel_cfg = config.get("channel", {})
+    listener_cfg = config.get("listener", {})
+
+    # Prefer channel.entity (supports name, username, or numeric chat_id)
+    # Fall back to listener.channel_name for backward compat
+    channel_entity = channel_cfg.get(
+        "entity",
+        listener_cfg.get("channel_name", "TradingView Alerts")
+    )
 
     listener = Listener(
         api_id=str(telegram_cfg.get("api_id", "")),
         api_hash=telegram_cfg.get("api_hash", ""),
         phone=telegram_cfg.get("phone", ""),
-        channel_name=listener_cfg.get("channel_name", "TradingView Alerts"),
+        channel_entity=channel_entity,
         session_name=telegram_cfg.get("session_name", "listener_session"),
-        sessions_dir="sessions",
-        log_file=listener_cfg.get("log_file", "alerts.log"),
+        sessions_dir=telegram_cfg.get("sessions_dir", "sessions"),
+        log_file=listener_cfg.get("alerts_log", "alerts.log"),
     )
 
     import asyncio
     asyncio.run(listener.run())
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s,%(levelname)s %(name)s: %(message)s",
+    )
+    run_listener()

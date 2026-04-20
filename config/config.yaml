@@ -1,9 +1,14 @@
-listener:
-  channel_name: TradingView Alerts
-  log_file: alerts.log
-  log_level: INFO
 telegram:
-  api_hash: 35ba575278923166895f4e4bcc1d1cee
-  api_id: '38568434'
-  phone: '+14382208442'
-  session_name: listener_session
+  api_id: "38568434"             # Your Telegram app API ID from https://my.telegram.org
+  api_hash: "35ba575278923166895f4e4bcc1d1cee"  # Your Telegram app API Hash
+  session_name: "listener_session"
+  phone: "+14382208442"          # Your Telegram phone number
+
+channel:
+  entity: "-1003946119741"       # Numeric chat_id for the private TradingView channel
+
+app:
+  log_level: "INFO"
+  alerts_log: "alerts.log"
+
+sessions_dir: "sessions"

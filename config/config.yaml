@@ -1,0 +1,14 @@
+telegram:
+  api_id: "YOUR_API_ID"          # Replace with your Telegram app API ID from https://my.telegram.org
+  api_hash: "YOUR_API_HASH"      # Replace with your Telegram app API Hash
+  session_name: "listener_session"
+  phone: "+1234567890"           # Your Telegram phone number
+
+channel:
+  entity: "TradingView Alerts"   # Channel name or username
+
+app:
+  log_level: "INFO"
+  alerts_log: "alerts.log"
+
+sessions_dir: "sessions"

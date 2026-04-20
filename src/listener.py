@@ -2,10 +2,10 @@
 
 import json
 import logging
-import sys
 from pathlib import Path
 
 from telethon import TelegramClient
+from telethon.tl.types import Chat
 
 from .parser import AlertParser, AlertMessage
 
@@ -56,12 +56,35 @@ class Listener:
         with open(self.log_file, "a") as f:
             f.write(json.dumps(alert.to_dict(), ensure_ascii=False) + "\n")
 
-    async def handle_message(self, event) -> None:
-        """Handle incoming message from the channel.
+    async def _resolve_channel(self, client: TelegramClient):
+        """Resolve channel entity from name, username, or numeric chat_id.
 
-        Args:
-            event: Telethon Message event.
+        For numeric IDs, iterates through dialogs to find a matching channel.
+        This is needed for private channels the session hasn't previously "seen".
         """
+        # First try: pass as-is (works for usernames and known entities)
+        try:
+            entity = await client.get_entity(self.channel_entity)
+            logger.info(f"Channel resolved directly: {self.channel_entity}")
+            return entity
+        except ValueError:
+            pass
+
+        # Second try: numeric chat_id — scan dialogs for a matching id
+        channel_id = int(self.channel_entity)
+        logger.info(f"Scanning dialogs for channel id {channel_id}...")
+        async for dialog in client.iter_dialogs():
+            if dialog.id == channel_id:
+                logger.info(f"Channel found in dialogs: {dialog.name} (id={dialog.id})")
+                return dialog.entity
+
+        raise ValueError(
+            f"Could not find channel with id '{self.channel_entity}' in your dialogs. "
+            f"Make sure the bot/user has joined the channel."
+        )
+
+    async def handle_message(self, event) -> None:
+        """Handle incoming message from the channel."""
         message_text = event.message.message or ""
         if not message_text.strip():
             return
@@ -85,13 +108,8 @@ class Listener:
         await client.start(phone=self.phone)
         logger.info(f"Connected to Telegram as {self.phone}")
 
-        try:
-            # channel_entity can be a name, username, or numeric chat_id string
-            channel = await client.get_entity(self.channel_entity)
-            logger.info(f"Listening on channel: {self.channel_entity}")
-        except Exception as e:
-            logger.error(f"Could not find channel '{self.channel_entity}': {e}")
-            raise
+        channel = await self._resolve_channel(client)
+        logger.info(f"Listening on channel: {getattr(channel, 'title', self.channel_entity)}")
 
         client.add_event_handler(self.handle_message)
         logger.info("Listener started. Press Ctrl+C to stop.")
@@ -109,8 +127,6 @@ def run_listener(config_path: str = "config/config.yaml") -> None:
     channel_cfg = config.get("channel", {})
     listener_cfg = config.get("listener", {})
 
-    # Prefer channel.entity (supports name, username, or numeric chat_id)
-    # Fall back to listener.channel_name for backward compat
     channel_entity = channel_cfg.get(
         "entity",
         listener_cfg.get("channel_name", "TradingView Alerts")

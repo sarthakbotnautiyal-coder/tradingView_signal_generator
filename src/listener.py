@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from telethon import TelegramClient
-from telethon.tl.types import Chat
+from telethon.events import NewMessage
 
 from .parser import AlertParser, AlertMessage
 
@@ -60,9 +60,7 @@ class Listener:
         """Resolve channel entity from name, username, or numeric chat_id.
 
         For numeric IDs, iterates through dialogs to find a matching channel.
-        This is needed for private channels the session hasn't previously "seen".
         """
-        # First try: pass as-is (works for usernames and known entities)
         try:
             entity = await client.get_entity(self.channel_entity)
             logger.info(f"Channel resolved directly: {self.channel_entity}")
@@ -70,7 +68,6 @@ class Listener:
         except ValueError:
             pass
 
-        # Second try: numeric chat_id — scan dialogs for a matching id
         channel_id = int(self.channel_entity)
         logger.info(f"Scanning dialogs for channel id {channel_id}...")
         async for dialog in client.iter_dialogs():
@@ -83,8 +80,12 @@ class Listener:
             f"Make sure the bot/user has joined the channel."
         )
 
-    async def handle_message(self, event) -> None:
-        """Handle incoming message from the channel."""
+    async def handle_message(self, event: NewMessage) -> None:
+        """Handle incoming message from the channel.
+
+        Args:
+            event: Telethon NewMessage event.
+        """
         message_text = event.message.message or ""
         if not message_text.strip():
             return
@@ -109,9 +110,14 @@ class Listener:
         logger.info(f"Connected to Telegram as {self.phone}")
 
         channel = await self._resolve_channel(client)
-        logger.info(f"Listening on channel: {getattr(channel, 'title', self.channel_entity)}")
+        channel_title = getattr(channel, 'title', self.channel_entity)
+        logger.info(f"Listening on channel: {channel_title}")
 
-        client.add_event_handler(self.handle_message)
+        # Filter: only NewMessage events from this specific channel
+        client.add_event_handler(
+            self.handle_message,
+            NewMessage(chats=[channel])
+        )
         logger.info("Listener started. Press Ctrl+C to stop.")
         await client.run_until_disconnected()
 

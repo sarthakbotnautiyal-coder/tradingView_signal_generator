@@ -42,12 +42,13 @@ class ParsedPatternSignal(TypedDict):
 #  Alert-type routing
 # ──────────────────────────────────────────────
 
-# Maps spx_raw.alert_type → (alert_category, alert_type_in_standardized)
-_ALERT_TYPE_MAP: dict[str, tuple[str, str]] = {
-    "fundamentals":           ("indicator_snapshot", "fundamentals"),
-    "bearish":                ("pattern_signal",     "bearish_reversal"),
-    "overbought":             ("pattern_signal",     "overbought_hyperwave"),
-    "LuxAlgo Confirmation+":  ("pattern_signal",     "confirmation_plus"),
+# Maps spx_raw.alert_type → alert_category only.
+# The alert_type in spx_standardized is now the raw description text.
+_ALERT_TYPE_MAP: dict[str, str] = {
+    "fundamentals":           "indicator_snapshot",
+    "bearish":                "pattern_signal",
+    "overbought":             "pattern_signal",
+    "LuxAlgo Confirmation+":   "pattern_signal",
     # 'test' records are skipped
 }
 
@@ -144,7 +145,7 @@ def parse_pattern_signal(raw_message: str, alert_type: str) -> ParsedPatternSign
 
     return ParsedPatternSignal(
         alert_category="pattern_signal",
-        alert_type=_alert_type_key(alert_type),
+        alert_type=description_part,
         symbol="SPX",
         price=price,
         received_at="",
@@ -188,7 +189,7 @@ def parse_raw_record(row: dict) -> dict | None:
             processed=0,
         )
 
-    category, _ = _ALERT_TYPE_MAP[alert_type]
+    category = _ALERT_TYPE_MAP[alert_type]
 
     if category == "indicator_snapshot":
         result: dict = parse_fundamentals(raw_message)
@@ -223,16 +224,6 @@ def parse_raw_record(row: dict) -> dict | None:
 # ──────────────────────────────────────────────
 #  Internal helpers
 # ──────────────────────────────────────────────
-
-_ALERT_TYPE_KEY_MAP = {v: k for k, v in _ALERT_TYPE_MAP.items()}
-
-
-def _alert_type_key(raw_alert_type: str) -> str:
-    """Map raw spx_raw alert_type to the standardized alert_type string."""
-    if raw_alert_type in _ALERT_TYPE_MAP:
-        return _ALERT_TYPE_MAP[raw_alert_type][1]
-    return raw_alert_type
-
 
 def _extract_value(pattern: str, text: str) -> float | None:
     """Extract first float match; return None if not found."""

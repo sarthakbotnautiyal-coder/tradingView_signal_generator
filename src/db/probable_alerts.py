@@ -123,8 +123,10 @@ def create_probable_alert(
     Args:
         db_path:             Path to tradingview.db
         pattern_signal_ts:   EST datetime of the triggering pattern signal
-        alert_type:          'bearish_reversal' | 'overbought_hyperwave' | 'confirmation_plus'
-        signal_direction:    'bearish' | 'neutral'
+        alert_type:          Full description from spx_standardized
+                             (e.g. 'Bearish reversal +',
+                             'Overbought Hyper Wave oscillator downward signal')
+        signal_direction:    'bearish' | 'bullish' | 'neutral'
         price_at_signal:     SPX price at time of pattern signal
         lookback_start:      Start of lookback window (EST)
         lookback_end:        End of lookback window (EST)

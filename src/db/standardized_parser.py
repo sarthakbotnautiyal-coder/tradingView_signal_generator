@@ -126,13 +126,19 @@ def parse_pattern_signal(raw_message: str, alert_type: str) -> ParsedPatternSign
     else:
         description_part = raw_message.strip()
 
-    # Determine signal_direction based on alert_type
-    if alert_type == "bearish":
+    # Determine signal_direction from description text keywords
+    description = description_part.lower()
+
+    if "bullish" in description:
+        signal_direction = "bullish"
+    elif "bearish" in description:
         signal_direction = "bearish"
-    elif alert_type == "overbought":
-        signal_direction = "bearish"      # overbought hyperwave = bearish
-    elif alert_type == "LuxAlgo Confirmation+":
-        signal_direction = "neutral"      # confirmation+ is its own direction
+    elif "overbought" in description or "oversold" in description:
+        # Overbought Hyper Wave / Oversold Hyper Wave — extract from keyword
+        if "oversold" in description:
+            signal_direction = "bullish"
+        else:
+            signal_direction = "bearish"
     else:
         signal_direction = "neutral"
 

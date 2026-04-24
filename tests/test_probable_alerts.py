@@ -69,6 +69,8 @@ def _insert_standardized(
     price: float | None = None,
     rsi: float | None = None,
     macd: float | None = None,
+    pattern_description: str | None = None,
+    signal_direction: str | None = None,
 ) -> int:
     """Helper to insert a row into spx_standardized."""
     conn = sqlite3.connect(db_path)
@@ -85,17 +87,19 @@ def _insert_standardized(
             1, :alert_category, :alert_type, 'SPX', :price, :received_at,
             :rsi, :macd, NULL, NULL, NULL, NULL,
             NULL, NULL, NULL,
-            NULL, NULL,
+            :pattern_description, :signal_direction,
             NULL, 0
         )
         """,
         {
-            "alert_category": alert_category,
-            "alert_type":    alert_type,
-            "price":         price,
-            "received_at":   received_at.isoformat(),
-            "rsi":           rsi,
-            "macd":         macd,
+            "alert_category":     alert_category,
+            "alert_type":         alert_type,
+            "price":              price,
+            "received_at":        received_at.isoformat(),
+            "rsi":                rsi,
+            "macd":               macd,
+            "pattern_description": pattern_description,
+            "signal_direction":   signal_direction,
         },
     )
     conn.commit()
@@ -122,12 +126,12 @@ class TestComputeLookbackWindow:
 
 
 # ──────────────────────────────────────────────
-#  bundle_indicators
+#  bundle_indicators — all alert types bundled
 # ──────────────────────────────────────────────
 
 class TestBundleIndicators:
-    def test_no_indicators_in_window(self, db_path: str) -> None:
-        """Pattern signal with 0 indicators in window → empty list."""
+    def test_no_records_in_window(self, db_path: str) -> None:
+        """Pattern signal with 0 records in window → empty list."""
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
 
@@ -183,7 +187,6 @@ class TestBundleIndicators:
         """Indicator at exactly lookback_start is included."""
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
-        # lookback_start = 16:25:00
 
         ind_ts = datetime(2026, 4, 24, 16, 25, 0, tzinfo=timezone.utc)
         _insert_standardized(db_path, "indicator_snapshot", "fundamentals", ind_ts, price=7100.0, rsi=60.0)
@@ -195,7 +198,6 @@ class TestBundleIndicators:
         """Indicator at exactly lookback_end is included."""
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
-        # lookback_end = 16:30:00
 
         ind_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         _insert_standardized(db_path, "indicator_snapshot", "fundamentals", ind_ts, price=7100.0, rsi=60.0)
@@ -203,22 +205,94 @@ class TestBundleIndicators:
         result = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
         assert len(result) == 1
 
-    def test_ignores_pattern_signals_in_window(self, db_path: str) -> None:
-        """Only indicator_snapshot records are bundled; pattern_signals are excluded."""
+    def test_includes_pattern_signals_in_window(self, db_path: str) -> None:
+        """Pattern signals ARE now included in the bundle (was: excluded)."""
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
 
         _insert_standardized(db_path, "indicator_snapshot", "fundamentals",
                              datetime(2026, 4, 24, 16, 28, 0, tzinfo=timezone.utc),
                              price=7100.0, rsi=60.0)
-        # This pattern_signal should NOT appear in bundled_indicators
-        _insert_standardized(db_path, "pattern_signal", "bearish_reversal",
+        # This confirmation_plus pattern signal should NOW appear in bundle
+        _insert_standardized(db_path, "pattern_signal", "confirmation_plus",
                              datetime(2026, 4, 24, 16, 29, 0, tzinfo=timezone.utc),
-                             price=7101.0)
+                             price=7163.18,
+                             pattern_description="TradingView confirmation+",
+                             signal_direction="neutral")
 
         result = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
-        assert len(result) == 1
-        assert result[0]["rsi"] == 60.0
+        assert len(result) == 2
+        indicator_record = result[0]
+        pattern_record   = result[1]
+        assert indicator_record["alert_category"] == "indicator_snapshot"
+        assert pattern_record["alert_category"]  == "pattern_signal"
+        assert pattern_record["alert_type"]      == "confirmation_plus"
+        assert pattern_record["price"]           == 7163.18
+        assert pattern_record["pattern_description"] == "TradingView confirmation+"
+        assert pattern_record["signal_direction"]    == "neutral"
+
+    def test_alert_category_and_type_always_present(self, db_path: str) -> None:
+        """Every bundled record — indicator or pattern — always has alert_category and alert_type."""
+        pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
+        lookback_start, lookback_end = compute_lookback_window(pattern_ts)
+
+        _insert_standardized(db_path, "indicator_snapshot", "fundamentals",
+                             datetime(2026, 4, 24, 16, 28, 0, tzinfo=timezone.utc),
+                             price=7100.0, rsi=60.0)
+        _insert_standardized(db_path, "pattern_signal", "bearish_reversal",
+                             datetime(2026, 4, 24, 16, 29, 0, tzinfo=timezone.utc),
+                             price=7163.18,
+                             pattern_description="Bearish reversal+",
+                             signal_direction="bearish")
+
+        result = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
+        assert len(result) == 2
+        for record in result:
+            assert "alert_category" in record
+            assert "alert_type"      in record
+            assert "price"           in record
+
+    def test_pattern_signal_plus_indicator_bundle(self, db_path: str) -> None:
+        """Pattern signal with 1 indicator_snapshot + 1 pattern_signal → both bundled."""
+        pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
+        lookback_start, lookback_end = compute_lookback_window(pattern_ts)
+
+        _insert_standardized(db_path, "indicator_snapshot", "fundamentals",
+                             datetime(2026, 4, 24, 16, 27, 0, tzinfo=timezone.utc),
+                             price=7100.0, rsi=60.0, macd=1.0)
+        _insert_standardized(db_path, "pattern_signal", "confirmation_plus",
+                             datetime(2026, 4, 24, 16, 28, 30, tzinfo=timezone.utc),
+                             price=7160.00,
+                             pattern_description="TradingView confirmation+",
+                             signal_direction="neutral")
+
+        result = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
+        assert len(result) == 2
+        assert result[0]["alert_category"] == "indicator_snapshot"
+        assert result[1]["alert_category"] == "pattern_signal"
+        assert result[1]["alert_type"] == "confirmation_plus"
+
+    def test_pattern_signal_with_only_pattern_signals_in_window(self, db_path: str) -> None:
+        """Pattern signal with only pattern_signals (no indicators) in window → bundle count > 0."""
+        pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
+        lookback_start, lookback_end = compute_lookback_window(pattern_ts)
+
+        # Two confirmation_plus signals in the window, no indicators
+        _insert_standardized(db_path, "pattern_signal", "confirmation_plus",
+                             datetime(2026, 4, 24, 16, 27, 0, tzinfo=timezone.utc),
+                             price=7155.0,
+                             pattern_description="TradingView confirmation+",
+                             signal_direction="neutral")
+        _insert_standardized(db_path, "pattern_signal", "confirmation_plus",
+                             datetime(2026, 4, 24, 16, 29, 0, tzinfo=timezone.utc),
+                             price=7158.0,
+                             pattern_description="TradingView confirmation+",
+                             signal_direction="neutral")
+
+        result = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
+        assert len(result) == 2
+        for record in result:
+            assert record["alert_category"] == "pattern_signal"
 
 
 # ──────────────────────────────────────────────
@@ -226,10 +300,19 @@ class TestBundleIndicators:
 # ──────────────────────────────────────────────
 
 class TestCreateProbableAlert:
-    def test_inserts_row_with_indicators(self, db_path: str) -> None:
+    def test_inserts_row_with_bundled_records(self, db_path: str) -> None:
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
-        indicators = [{"id": 10, "rsi": 67.46, "macd": 8.2931}]
+        bundled = [{
+            "id": 10, "alert_category": "indicator_snapshot",
+            "alert_type": "fundamentals", "price": 7100.0,
+            "rsi": 67.46, "macd": 8.2931,
+            "macd_signal": None, "macd_hist": None,
+            "adx": None, "vwap": None,
+            "bb_upper": None, "bb_middle": None, "bb_lower": None,
+            "pattern_description": None, "signal_direction": None,
+            "received_at": "2026-04-24T16:27:00+00:00",
+        }]
 
         create_probable_alert(
             db_path,
@@ -239,7 +322,7 @@ class TestCreateProbableAlert:
             7163.18,
             lookback_start,
             lookback_end,
-            indicators,
+            bundled,
         )
 
         conn = sqlite3.connect(db_path)
@@ -249,33 +332,32 @@ class TestCreateProbableAlert:
         conn.close()
 
         assert len(rows) == 1
-        row = rows[0]
         # id=1, pattern_signal_ts, alert_type, signal_direction, price_at_signal,
         # lookback_start, lookback_end, bundled_indicators, indicator_count, created_at
-        assert row[1] == pattern_ts.isoformat()
-        assert row[2] == "bearish_reversal"
-        assert row[3] == "bearish"
-        assert row[4] == 7163.18
-        assert row[8] == 1  # indicator_count
+        assert rows[0][1] == pattern_ts.isoformat()
+        assert rows[0][2] == "bearish_reversal"
+        assert rows[0][3] == "bearish"
+        assert rows[0][4] == 7163.18
+        assert rows[0][8] == 1  # indicator_count (== len(bundled))
 
-        bundled = json.loads(row[7])
-        assert len(bundled) == 1
-        assert bundled[0]["rsi"] == 67.46
+        bundled_stored = json.loads(rows[0][7])
+        assert len(bundled_stored) == 1
+        assert bundled_stored[0]["rsi"] == 67.46
 
     def test_ignores_duplicate_same_timestamp(self, db_path: str) -> None:
         """UNIQUE constraint on pattern_signal_ts prevents duplicate inserts."""
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
-        indicators = [{"id": 10, "rsi": 67.46}]
+        bundled = [{"id": 10, "rsi": 67.46}]
 
         create_probable_alert(
             db_path, pattern_ts, "bearish_reversal", "bearish", 7163.18,
-            lookback_start, lookback_end, indicators,
+            lookback_start, lookback_end, bundled,
         )
         # Second call with same pattern_signal_ts — should be ignored (no exception)
         create_probable_alert(
             db_path, pattern_ts, "bearish_reversal", "bearish", 7163.18,
-            lookback_start, lookback_end, indicators,
+            lookback_start, lookback_end, bundled,
         )
 
         conn = sqlite3.connect(db_path)
@@ -286,18 +368,19 @@ class TestCreateProbableAlert:
 
         assert count == 1
 
-    def test_indicator_count_reflects_list_length(self, db_path: str) -> None:
+    def test_indicator_count_reflects_bundle_length(self, db_path: str) -> None:
+        """indicator_count is len(bundled) even when bundle contains mixed types."""
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
-        indicators = [
-            {"id": 10, "rsi": 60.0},
-            {"id": 11, "rsi": 65.0},
-            {"id": 12, "rsi": 70.0},
+        bundled = [
+            {"id": 10, "alert_category": "indicator_snapshot", "alert_type": "fundamentals"},
+            {"id": 11, "alert_category": "pattern_signal",    "alert_type": "confirmation_plus"},
+            {"id": 12, "alert_category": "pattern_signal",    "alert_type": "bearish_reversal"},
         ]
 
         create_probable_alert(
             db_path, pattern_ts, "overbought_hyperwave", "bearish", 7156.03,
-            lookback_start, lookback_end, indicators,
+            lookback_start, lookback_end, bundled,
         )
 
         conn = sqlite3.connect(db_path)
@@ -307,8 +390,8 @@ class TestCreateProbableAlert:
         conn.close()
 
         assert row[0] == 3
-        bundled = json.loads(row[1])
-        assert len(bundled) == 3
+        bundled_stored = json.loads(row[1])
+        assert len(bundled_stored) == 3
 
 
 # ──────────────────────────────────────────────
@@ -316,8 +399,8 @@ class TestCreateProbableAlert:
 # ──────────────────────────────────────────────
 
 class TestProbableAlertsFullFlow:
-    def test_pattern_signal_no_indicators_skipped(self, db_path: str) -> None:
-        """Pattern signal with 0 indicators in window → no row created."""
+    def test_pattern_signal_no_records_skipped(self, db_path: str) -> None:
+        """Pattern signal with 0 records in window → no row created."""
         # Insert indicator at 16:20, pattern signal at 16:30 (outside 5-min window)
         _insert_standardized(
             db_path, "indicator_snapshot", "fundamentals",
@@ -328,8 +411,8 @@ class TestProbableAlertsFullFlow:
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
 
-        indicators = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
-        assert indicators == []
+        bundled = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
+        assert bundled == []
 
         # No create_probable_alert call when count == 0
         conn = sqlite3.connect(db_path)
@@ -339,9 +422,9 @@ class TestProbableAlertsFullFlow:
         conn.close()
         assert count == 0
 
-    def test_pattern_signal_with_indicators_row_created(self, db_path: str) -> None:
-        """Pattern signal with ≥1 indicator in window → row created."""
-        # Insert indicators in the window
+    def test_pattern_signal_with_records_row_created(self, db_path: str) -> None:
+        """Pattern signal with ≥1 record in window → row created."""
+        # Insert indicator in the window
         ind_ts1 = datetime(2026, 4, 24, 16, 27, 0, tzinfo=timezone.utc)
         ind_ts2 = datetime(2026, 4, 24, 16, 29, 0, tzinfo=timezone.utc)
         _insert_standardized(db_path, "indicator_snapshot", "fundamentals",
@@ -353,12 +436,12 @@ class TestProbableAlertsFullFlow:
         pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
         lookback_start, lookback_end = compute_lookback_window(pattern_ts)
 
-        indicators = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
-        assert len(indicators) == 2
+        bundled = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
+        assert len(bundled) == 2
 
         create_probable_alert(
             db_path, pattern_ts, "confirmation_plus", "neutral", 7124.05,
-            lookback_start, lookback_end, indicators,
+            lookback_start, lookback_end, bundled,
         )
 
         conn = sqlite3.connect(db_path)
@@ -370,3 +453,42 @@ class TestProbableAlertsFullFlow:
         assert row[0] == "confirmation_plus"
         assert row[1] == "neutral"
         assert row[2] == 2
+
+    def test_full_flow_mixed_types_bundled(self, db_path: str) -> None:
+        """End-to-end: 2 indicators + 1 pattern signal in window → all 3 bundled."""
+        pattern_ts = datetime(2026, 4, 24, 16, 30, 0, tzinfo=timezone.utc)
+        lookback_start, lookback_end = compute_lookback_window(pattern_ts)
+
+        _insert_standardized(db_path, "indicator_snapshot", "fundamentals",
+                             datetime(2026, 4, 24, 16, 26, 0, tzinfo=timezone.utc),
+                             price=7100.0, rsi=60.0, macd=1.0)
+        _insert_standardized(db_path, "indicator_snapshot", "fundamentals",
+                             datetime(2026, 4, 24, 16, 28, 0, tzinfo=timezone.utc),
+                             price=7105.0, rsi=65.0, macd=1.5)
+        _insert_standardized(db_path, "pattern_signal", "confirmation_plus",
+                             datetime(2026, 4, 24, 16, 29, 30, tzinfo=timezone.utc),
+                             price=7160.0,
+                             pattern_description="TradingView confirmation+",
+                             signal_direction="neutral")
+
+        bundled = bundle_indicators(db_path, pattern_ts, lookback_start, lookback_end)
+        assert len(bundled) == 3
+
+        create_probable_alert(
+            db_path, pattern_ts, "bearish_reversal", "bearish", 7163.18,
+            lookback_start, lookback_end, bundled,
+        )
+
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("SELECT indicator_count, bundled_indicators FROM probable_alerts")
+        row = cur.fetchone()
+        conn.close()
+
+        assert row[0] == 3
+        stored = json.loads(row[1])
+        categories = [r["alert_category"] for r in stored]
+        assert categories == ["indicator_snapshot", "indicator_snapshot", "pattern_signal"]
+        pattern_record = next(r for r in stored if r["alert_category"] == "pattern_signal")
+        assert pattern_record["alert_type"] == "confirmation_plus"
+        assert pattern_record["price"] == 7160.0

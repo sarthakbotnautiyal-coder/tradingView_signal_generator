@@ -50,9 +50,9 @@ def bundle_indicators(
 
     Args:
         db_path:           Path to tradingview.db
-        pattern_signal_ts: UTC datetime of the triggering pattern signal
-        lookback_start:    Start of lookback window (pattern_signal_ts - 5 min)
-        lookback_end:      End of lookback window (pattern_signal_ts, inclusive)
+        pattern_signal_ts: EST datetime of the triggering pattern signal
+        lookback_start:    Start of lookback window (pattern_signal_ts - 5 min, EST)
+        lookback_end:      End of lookback window (pattern_signal_ts, EST, inclusive)
 
     Returns:
         List of dicts suitable for JSON serialization, ordered by
@@ -122,12 +122,12 @@ def create_probable_alert(
 
     Args:
         db_path:             Path to tradingview.db
-        pattern_signal_ts:   UTC datetime of the triggering pattern signal
+        pattern_signal_ts:   EST datetime of the triggering pattern signal
         alert_type:          'bearish_reversal' | 'overbought_hyperwave' | 'confirmation_plus'
         signal_direction:    'bearish' | 'neutral'
         price_at_signal:     SPX price at time of pattern signal
-        lookback_start:      Start of lookback window
-        lookback_end:        End of lookback window
+        lookback_start:      Start of lookback window (EST)
+        lookback_end:        End of lookback window (EST)
         bundled:             Bundled dicts from bundle_indicators() (all types)
     """
     conn = sqlite3.connect(str(db_path))
@@ -163,11 +163,11 @@ def compute_lookback_window(pattern_signal_ts: datetime, minutes: int = 5) -> tu
     """Compute the lookback window around a pattern signal timestamp.
 
     Args:
-        pattern_signal_ts: UTC datetime of the pattern signal
+        pattern_signal_ts: EST datetime of the pattern signal
         minutes:           Lookback duration in minutes (default 5)
 
     Returns:
-        (lookback_start, lookback_end) tuple, both UTC.
+        (lookback_start, lookback_end) tuple, both EST.
     """
     lookback_end   = pattern_signal_ts
     lookback_start = pattern_signal_ts - timedelta(minutes=minutes)

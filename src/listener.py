@@ -190,12 +190,12 @@ class Listener:
 
     def _insert_raw(self, raw_message: str, alert_type: str) -> int:
         """Insert a raw message into spx_raw table. Returns row ID."""
-        now_utc = datetime.now(timezone.utc).isoformat()
+        now_est = datetime.now(EST).isoformat()
         conn = sqlite3.connect(str(self.db_path))
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO spx_raw (raw_message, alert_type, received_at) VALUES (?, ?, ?)",
-            (raw_message, alert_type, now_utc),
+            (raw_message, alert_type, now_est),
         )
         conn.commit()
         row_id = cur.lastrowid
@@ -216,7 +216,7 @@ class Listener:
         """Look back 5 minutes for indicator snapshots; bundle into probable_alerts if found.
 
         Args:
-            pattern_signal_ts: UTC datetime of the pattern signal just inserted.
+            pattern_signal_ts: EST datetime of the pattern signal just inserted.
         """
         lookback_start, lookback_end = compute_lookback_window(pattern_signal_ts)
         indicators = bundle_indicators(
@@ -301,7 +301,7 @@ class Listener:
             return
 
         alert_type = classify_alert_type(message_text)
-        received_at = datetime.now(timezone.utc)
+        received_at = datetime.now(EST)
         received_at_iso = received_at.isoformat()
         raw_id = self._insert_raw(message_text.strip(), alert_type)
 

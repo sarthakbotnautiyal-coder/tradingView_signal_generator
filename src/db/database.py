@@ -5,8 +5,11 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from src.parser import AlertMessage
+
+EST = ZoneInfo("America/New_York")
 
 
 class AlertDatabase:
@@ -64,7 +67,7 @@ class AlertDatabase:
         Returns:
             Row ID of inserted alert.
         """
-        received = alert.timestamp.isoformat() if alert.timestamp else datetime.now(timezone.utc).isoformat()
+        received = alert.timestamp.isoformat() if alert.timestamp else datetime.now(EST).isoformat()
 
         with self._get_conn() as conn:
             cursor = conn.execute(

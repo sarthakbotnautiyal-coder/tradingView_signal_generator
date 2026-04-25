@@ -62,7 +62,7 @@ class TestParsePatternSignal:
         result = parse_pattern_signal(raw, "bearish")
 
         assert result["alert_category"] == "pattern_signal"
-        assert result["alert_type"] == "bearish_reversal"
+        assert result["alert_type"] == "Bearish reversal +"
         assert result["symbol"] == "SPX"
         assert result["price"] == 7163.18
         assert result["pattern_description"] == "Bearish reversal +"
@@ -73,20 +73,48 @@ class TestParsePatternSignal:
         result = parse_pattern_signal(raw, "overbought")
 
         assert result["alert_category"] == "pattern_signal"
-        assert result["alert_type"] == "overbought_hyperwave"
+        assert result["alert_type"] == "Overbought Hyper Wave oscillator downward signal"
         assert result["price"] == 7156.03
         assert result["pattern_description"] == "Overbought Hyper Wave oscillator downward signal"
         assert result["signal_direction"] == "bearish"
+
+    def test_oversold_hyperwave(self) -> None:
+        raw = "Oversold Hyper Wave oscillator upward signal|Close:7110.50"
+        result = parse_pattern_signal(raw, "oversold")
+
+        assert result["alert_category"] == "pattern_signal"
+        assert result["alert_type"] == "Oversold Hyper Wave oscillator upward signal"
+        assert result["price"] == 7110.50
+        assert result["pattern_description"] == "Oversold Hyper Wave oscillator upward signal"
+        assert result["signal_direction"] == "bullish"
 
     def test_luxalgo_confirmation_plus(self) -> None:
         raw = "TradingView confirmation+|Close:7124.05"
         result = parse_pattern_signal(raw, "LuxAlgo Confirmation+")
 
         assert result["alert_category"] == "pattern_signal"
-        assert result["alert_type"] == "confirmation_plus"
+        assert result["alert_type"] == "TradingView confirmation+"
         assert result["price"] == 7124.05
         assert result["pattern_description"] == "TradingView confirmation+"
         assert result["signal_direction"] == "neutral"
+
+    def test_tradingview_bullish_confirmation(self) -> None:
+        raw = "TradingView bullish confirmation+|Close:7124.05"
+        result = parse_pattern_signal(raw, "LuxAlgo Confirmation+")
+
+        assert result["alert_category"] == "pattern_signal"
+        assert result["alert_type"] == "TradingView bullish confirmation+"
+        assert result["pattern_description"] == "TradingView bullish confirmation+"
+        assert result["signal_direction"] == "bullish"
+
+    def test_tradingview_bearish_confirmation(self) -> None:
+        raw = "TradingView Bearish confirmation+|Close:7124.05"
+        result = parse_pattern_signal(raw, "LuxAlgo Confirmation+")
+
+        assert result["alert_category"] == "pattern_signal"
+        assert result["alert_type"] == "TradingView Bearish confirmation+"
+        assert result["pattern_description"] == "TradingView Bearish confirmation+"
+        assert result["signal_direction"] == "bearish"
 
 
 class TestParseRawRecord:
@@ -136,7 +164,7 @@ class TestParseRawRecord:
         assert result is not None
         assert result["raw_id"] == 79
         assert result["alert_category"] == "pattern_signal"
-        assert result["alert_type"] == "bearish_reversal"
+        assert result["alert_type"] == "Bearish reversal +"
         assert result["pattern_description"] == "Bearish reversal +"
         assert result["signal_direction"] == "bearish"
         # Indicator fields should be None
@@ -154,7 +182,7 @@ class TestParseRawRecord:
 
         assert result is not None
         assert result["alert_category"] == "pattern_signal"
-        assert result["alert_type"] == "overbought_hyperwave"
+        assert result["alert_type"] == "Overbought Hyper Wave oscillator downward signal"
         assert result["signal_direction"] == "bearish"
 
     def test_confirmation_plus_record(self) -> None:
@@ -167,7 +195,7 @@ class TestParseRawRecord:
         result = parse_raw_record(row)
 
         assert result is not None
-        assert result["alert_type"] == "confirmation_plus"
+        assert result["alert_type"] == "TradingView confirmation+"
         assert result["signal_direction"] == "neutral"
 
     def test_unknown_alert_type_returns_unknown_category(self) -> None:
@@ -193,5 +221,5 @@ class TestAlertTypeMapping:
         assert known == set(_ALERT_TYPE_MAP.keys())
 
     def test_categories_are_valid(self) -> None:
-        for at, (cat, _) in _ALERT_TYPE_MAP.items():
+        for at, cat in _ALERT_TYPE_MAP.items():
             assert cat in ("indicator_snapshot", "pattern_signal")
